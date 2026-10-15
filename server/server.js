@@ -2,7 +2,13 @@ import express from "express";
 import cors from "cors";
 
 const app = express();
-const PORT = 4000;
+const PORT = process.env.PORT === undefined ? 4000 : Number(process.env.PORT);
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isJsonObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 
 app.use(cors());
 app.use(express.json());
@@ -52,11 +58,23 @@ const projects = [
 
 // Login
 app.post("/api/login", (req, res) => {
+  if (!isJsonObject(req.body)) {
+    return res.status(400).json({
+      message: "Email and password are required"
+    });
+  }
+
   const { email, password } = req.body;
+
+  if (typeof email !== "string" || typeof password !== "string") {
+    return res.status(400).json({
+      message: "Email and password must be strings"
+    });
+  }
 
   const user = users.find(
     (item) =>
-      item.email === email &&
+      item.email === email.trim() &&
       item.password === password
   );
 
@@ -98,18 +116,39 @@ app.get("/api/clients", authenticate, (req, res) => {
 
 // Add client
 app.post("/api/clients", authenticate, (req, res) => {
+  if (!isJsonObject(req.body)) {
+    return res.status(400).json({
+      message: "Request body must be a JSON object"
+    });
+  }
+
   const { name, email } = req.body;
 
-  if (!name || !email) {
+  if (typeof name !== "string" || typeof email !== "string") {
+    return res.status(400).json({
+      message: "Name and email must be strings"
+    });
+  }
+
+  const cleanName = name.trim();
+  const cleanEmail = email.trim();
+
+  if (!cleanName || !cleanEmail) {
     return res.status(400).json({
       message: "Name and email are required"
     });
   }
 
+  if (!EMAIL_PATTERN.test(cleanEmail)) {
+    return res.status(400).json({
+      message: "Enter a valid email address"
+    });
+  }
+
   const newClient = {
     id: nextClientId++,
-    name,
-    email
+    name: cleanName,
+    email: cleanEmail
   };
 
   clients.push(newClient);
@@ -159,11 +198,17 @@ app.get("/api/projects", authenticate, (req, res) => {
 
 // Error handler
 app.use((err, req, res, next) => {
+  if (err.type === "entity.parse.failed") {
+    return res.status(400).json({
+      message: "Request body must be valid JSON"
+    });
+  }
+
   res.status(500).json({
-    message: err.message
+    message: "Internal server error"
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+const server = app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${server.address().port}`);
 });
